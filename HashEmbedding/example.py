@@ -11,6 +11,15 @@ from keras.callbacks import EarlyStopping
 import dataloader
 import random
 
+use_hash_embeddings = True
+embedding_size = 20
+num_buckets = 10**6 # number of buckets in second hashing layer (hash embedding)
+max_words = 10**7  # number of buckets in first hashing layer
+max_epochs = 50
+num_hash_functions = 2
+max_len = 150
+num_classes = 4
+
 def get_model(embedding, num_classes):
     input_words = Input([None], dtype='int32', name='input_words')
 
@@ -34,30 +43,16 @@ def remove_punct(in_string):
     return ''.join([ch.lower() if ch not in string.punctuation else ' ' for ch in in_string])
 
 
-def bigram_vectorizer(documents, bigram_dict={}):
-    if len(bigram_dict)==0:
-        docs2id = [None]*len(documents)
-        for (i, document) in enumerate(documents):
-            tokens = document.split(' ')
-            docs2id[i] = [None]*(len(tokens)-1)
-            for j in range(len(tokens)-1):
-                key = tokens[j]+"_"+tokens[j+1]
-                if key not in bigram_dict:
-                    bigram_dict[key] = len(bigram_dict)+1
-                docs2id[i][j] = bigram_dict[key]
-        return bigram_dict, docs2id
-    else:
-        docs2id = [None]*len(documents)
-        for (i, document) in enumerate(documents):
-            tokens = document.split(' ')
-            docs2id[i] = [None]*(len(tokens)-1)
-            for j in range(len(tokens)-1):
-                key = tokens[j]+"_"+tokens[j+1]
-                if key not in bigram_dict:
-                    docs2id[i][j] = 0
-                else:
-                    docs2id[i][j] = bigram_dict[key]
-        return docs2id
+def bigram_vectorizer(documents):
+    docs2id = [None]*len(documents)
+    for (i, document) in enumerate(documents):
+        tokens = document.split(' ')
+        docs2id[i] = [None]*(len(tokens)-1)
+        for j in range(len(tokens)-1):
+            key = tokens[j]+"_"+tokens[j+1]
+            idx = word_encoder(key, max_words)
+            docs2id[i][j] = idx
+    return docs2id
 
 
 # In[4]:
@@ -75,14 +70,14 @@ def create_dataset():
     dl_obj = dataloader.UniversalArticleDatasetProvider(1, valid_fraction=0.05)
     dl_obj.load_data()
 
-    train_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.train_samples]
-    train_targets = [sample['class'] - 1 for sample in dl_obj.train_samples]
+    train_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.train_samples[:1000]]
+    train_targets = [sample['class'] - 1 for sample in dl_obj.train_samples[:1000]]
 
-    val_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.valid_samples]
-    val_targets = [sample['class'] - 1 for sample in dl_obj.valid_samples]
+    val_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.valid_samples[:1000]]
+    val_targets = [sample['class'] - 1 for sample in dl_obj.valid_samples[:1000]]
 
-    bigram_dict, train_docs2id = bigram_vectorizer(train_documents)
-    val_docs2id = bigram_vectorizer(val_documents, bigram_dict)
+    train_docs2id = bigram_vectorizer(train_documents)
+    val_docs2id = bigram_vectorizer(val_documents)
 
     train_docs2id = input_dropout(train_docs2id)
     train_docs2id = [d+[0]*(max_len-len(d)) for d in train_docs2id]
@@ -94,14 +89,6 @@ def create_dataset():
     
     return train_docs2id, train_targets, val_docs2id, val_targets
 
-use_hash_embeddings = True
-embedding_size = 20
-num_buckets = 10**6 # number of buckets in second hashing layer (hash embedding)
-max_words = 10**7  # number of buckets in first hashing layer
-max_epochs = 50
-num_hash_functions = 2
-max_len = 150
-num_classes = 4
 
 if __name__ == '__main__':
 
