@@ -70,24 +70,29 @@ def create_dataset():
     dl_obj = dataloader.UniversalArticleDatasetProvider(1, valid_fraction=0.05)
     dl_obj.load_data()
 
-    train_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.train_samples[:1000]]
-    train_targets = [sample['class'] - 1 for sample in dl_obj.train_samples[:1000]]
+    train_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.train_samples]
+    train_targets = [sample['class'] - 1 for sample in dl_obj.train_samples]
 
-    val_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.valid_samples[:1000]]
-    val_targets = [sample['class'] - 1 for sample in dl_obj.valid_samples[:1000]]
+    val_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.valid_samples]
+    val_targets = [sample['class'] - 1 for sample in dl_obj.valid_samples]
+
+    test_documents = [remove_punct(sample['title'] + " " + sample['text']) for sample in dl_obj.test_samples]
+    test_targets = [sample['class'] - 1 for sample in dl_obj.test_samples]
 
     train_docs2id = bigram_vectorizer(train_documents)
     val_docs2id = bigram_vectorizer(val_documents)
+    test_docs2id = bigram_vectorizer(test_documents)
 
     train_docs2id = input_dropout(train_docs2id)
-    train_docs2id = [d+[0]*(max_len-len(d)) for d in train_docs2id]
-    val_docs2id = [d+[0]*(max_len-len(d)) for d in val_docs2id]
+    train_docs2id = [d+[0]*(max_len-len(d)) if len(d) <= max_len else d[:max_len] for d in train_docs2id]
+    val_docs2id = [d+[0]*(max_len-len(d)) if len(d) <= max_len else d[:max_len] for d in val_docs2id]
+    test_docs2id = [d+[0]*(max_len-len(d)) if len(d) <= max_len else d[:max_len] for d in test_docs2id]
     #val_docs2id = input_dropout(val_docs2id)
 
     #train_docs2id = train_docs2id % max_words
     #val_docs2id = val_docs2id % max_words
     
-    return train_docs2id, train_targets, val_docs2id, val_targets
+    return train_docs2id, train_targets, val_docs2id, val_targets, test_docs2id, test_targets
 
 
 if __name__ == '__main__':
@@ -97,7 +102,7 @@ if __name__ == '__main__':
     else:
         embedding = Embedding(max_words, embedding_size)
 
-    train_data, train_targets, test_data, test_targets = create_dataset()
+    train_data, train_targets, val_data, val_targets, test_data, test_targets = create_dataset()
 
     model = get_model(embedding, num_classes)
     metrics = ['accuracy']
@@ -105,10 +110,9 @@ if __name__ == '__main__':
     model.compile(optimizer=keras.optimizers.Adam(),loss=loss, metrics=['accuracy'])
 
     print('Num parameters in model: %i' % model.count_params())
-    #model.fit(train_data, train_targets, nb_epoch=max_epochs, validation_data = (test_data, test_targets),
-    model.fit(train_data, train_targets, nb_epoch=max_epochs, validation_split = 0.1,
-              callbacks=[EarlyStopping(patience=5)])
-
-    #test_result = model.test_on_batch(data_encoded[idx_test::, :], targets[idx_test::])
+    model.fit(train_data, train_targets, nb_epoch=max_epochs, validation_data = (val_data, val_targets),
+              callbacks=[EarlyStopping(patience=5)], batch_size=1024)
+    test_result = model.test_on_batch(test_data, test_targets)
+    print(test_result)
     #for i, (name, res) in enumerate(zip(model.metrics_names, test_result)):
         #print('%s: %1.4f' % (name, res))
